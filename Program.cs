@@ -71,46 +71,60 @@ namespace WaitForFinish
             var exitCodeList = new List<int>();
             do
             {
-                var containers = client.Containers.ListContainersAsync(parameters).Result;
-
-                var containersWithNameMatched = containers.Where(container =>
+                try
                 {
-                    var anyNameOfThisContainerIsInListProvidedByUser = container.Names
-                        .Select(r => r.Replace("/", string.Empty))
-                        .Any(name => names.Contains(name));
-                    return anyNameOfThisContainerIsInListProvidedByUser;
-                }).ToList();
+                    var containers = client.Containers.ListContainersAsync(parameters).Result;
 
-                exitCodeList.Clear();
-                atLeastOneIsRunning = containersWithNameMatched.AsParallel().Any(container =>
-                {
-                    var running = string.Equals(container.State.ToString().ToLower(), "running");
-                    if (!running)
+                    var containersWithNameMatched = containers.Where(container =>
                     {
-                        try
+                        var anyNameOfThisContainerIsInListProvidedByUser = container.Names
+                            .Select(r => r.Replace("/", string.Empty))
+                            .Any(name => names.Contains(name));
+                        return anyNameOfThisContainerIsInListProvidedByUser;
+                    }).ToList();
+
+                    exitCodeList.Clear();
+                    atLeastOneIsRunning = containersWithNameMatched.AsParallel().Any(container =>
+                    {
+                        var running = string.Equals(container.State.ToString().ToLower(), "running");
+                        if (!running)
                         {
-                            var va = container.Status.SkipWhile(a => a != '(').Skip(1).TakeWhile(a => a != ')');
-                            var exitCode = new String(va.ToArray());
-                            exitCodeList.Add(Convert.ToInt32(exitCode));
+                            try
+                            {
+                                var va = container.Status.SkipWhile(a => a != '(').Skip(1).TakeWhile(a => a != ')');
+                                var exitCode = new String(va.ToArray());
+                                exitCodeList.Add(Convert.ToInt32(exitCode));
+                            }
+                            catch (Exception ex)
+                            {
+                                if (treatUnknownStatusAsFailed)
+                                {
+                                    exitCodeList.Add(1);
+                                }
+                                else
+                                {
+                                    exitCodeList.Add(0);
+                                }
+                            }
                         }
-                        catch(Exception ex)
+                        return running;
+                    });
+
+                    Console.Out.WriteLine(DateTime.Now.ToString() + " - Is at least one alive? " + atLeastOneIsRunning.ToString());
+                    Thread.Sleep(secondsBetweeenTests * 1000);
+                }
+                catch (Exception exception)
+                {
+                    Console.Out.WriteLine(exception.Message + Environment.NewLine + exception.Source + Environment.NewLine + exception.StackTrace);
+
+                    if (exception is AggregateException agg)
+                    {
+                        foreach (var item in agg.InnerExceptions)
                         {
-                            if (treatUnknownStatusAsFailed)
-                            {
-                                exitCodeList.Add(1);
-                            }
-                            else
-                            {
-                                exitCodeList.Add(0);
-                            }
+                            Console.Out.WriteLine(exception.Message + Environment.NewLine + exception.Source + Environment.NewLine + exception.StackTrace);
                         }
                     }
-                    return running;
-                });
-
-                Console.Out.WriteLine(DateTime.Now.ToString() + " - Is at least one alive? " + atLeastOneIsRunning.ToString());
-                Thread.Sleep(secondsBetweeenTests * 1000);
-
+                }
             } while (atLeastOneIsRunning);
 
             var anyFail = exitCodeList.Any(exitCode => exitCode != 0);
