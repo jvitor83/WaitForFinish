@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "WaitForFinish": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "CONTAINER_NAMES": "docker-multi_a_1,docker-multi_b_1"
+      }
+    },
+    "Docker": {
+      "commandName": "Docker"
+    }
+  }
+}
